@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>BIDV PGD Gio Linh - Tra cứu thuế PNN xã Bến Hải</title>
+<style>
+  body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f5f6fa;color:#222}
+  header{
+    background:teal;
+    padding:10px 16px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    position:fixed;
+    top:0;left:0;right:0;
+    z-index:1000
+  }
+  header .title{font-size:18px;font-weight:700;color:#fff}
+  header .meta{font-size:13px;color:#FFD700}
+  .marquee{
+    background:#FFC62F;
+    color:#000;
+    padding:6px 10px;
+    overflow:hidden;
+    white-space:nowrap;
+    position:fixed;
+    top:80px;left:0;right:0;
+    z-index:999;
+    text-align:center
+  }
+  .marquee span{display:inline-block;padding-left:100%;animation:marq 40s linear infinite}
+  @keyframes marq{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}  
+  .container{max-width:1200px;margin:140px auto 18px auto;padding:12px}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .controls .left{display:flex;gap:8px;flex:1;min-width:300px}
+  input[type=text],select{padding:8px;border-radius:6px;border:1px solid #ccc;font-size:14px}
+  button{background:teal;color:white;border:none;padding:8px 12px;border-radius:6px;cursor:pointer}
+  table{width:100%;border-collapse:collapse;background:white;border-radius:6px;overflow:hidden}
+  th,td{padding:8px;text-align:left;border-bottom:1px solid #eee;font-size:13px}
+  th{background:#f0f7fb;color:teal;font-weight:600}
+  td.amount{text-align:right;font-weight:600}
+  tr:hover{background:#fafafa;cursor:pointer}
+  .pager{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px}
+  #qrcode{scroll-margin-top:145px;margin-top:18px;text-align:center;background:white;padding:12px;border-radius:8px}
+  .meta{font-size:13px}
+  @media(max-width:700px){.controls{flex-direction:column;align-items:stretch}input[type=text],select{width:100%}table,th,td{font-size:12px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="title">BIDV - PGD Gio Linh - Tra cứu &amp; Tạo QR thanh toán Thuế PNN xã Bến Hải </div>
+  <div class="meta">Tìm kiếm theo tên NNT, đối chiếu thông tin, chọn để sinh QR</div>
+</header>
+<div class="marquee"><span>BIDV đồng hành cùng thuế Nhà nước – Nộp thuế nhanh chóng qua QR Code     |   Khuyến cáo: Website là công cụ hỗ trợ UNT truy xuất dữ liệu người nộp thuế tạo QR, chỉ sử dụng dữ liệu cho mục đích thu PNN; không chia sẻ ra ngoài phạm vi công tác.  </span></div>
+<div class="container">
+  <div class="controls">
+    <div class="left">
+      <input id="searchInput" type="text" placeholder="Tìm theo Tên tài khoản (cột E) hoặc Mã số thuế (cột G)..." />
+      <select id="phuongSelect"><option value="">-- Chọn Phường/Xã --</option></select>
+      <select id="thonSelect"><option value="">-- Chọn Thôn/Tổ  --</option></select>
+    </div>
+    <div class="right">
+      <button id="clearBtn">Xóa bộ lọc</button>
+    </div>
+  </div>
+
+  <div id="qrcode"><div class="meta">Chọn 1 dòng để hiển thị BIDV QR </div></div>
+
+  <div id="stats" class="meta">Đang tải dữ liệu...</div>
+
+  <table id="resultTable" aria-live="polite">
+    <thead>
+      <tr><th style="width:160px">Số TK</th><th>Tên tài khoản</th><th style="width:120px">Số tiền</th><th style="width:160px">MST / Nội dung</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div class="pager">
+    <button id="prevBtn">Trang trước</button>
+    <div id="pageInfo" class="meta"></div>
+    <button id="nextBtn">Trang sau</button>
+  </div>
+
+  </div>
+
+<script>
+fetch("data.json")
+  .then(res => res.json())
+  .then(data => {
+let filtered = data.slice();
+let page = 1;
+const perPage = 10;
+
+const tbody = document.querySelector('#resultTable tbody');
+const searchInput = document.getElementById('searchInput');
+const phuongSelect = document.getElementById('phuongSelect');
+const thonSelect = document.getElementById('thonSelect');
+const pageInfo = document.getElementById('pageInfo');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const stats = document.getElementById('stats');
+const clearBtn = document.getElementById('clearBtn');
+const qrcodeDiv = document.getElementById('qrcode');
+
+function init(){
+  populatePhuongOptions();
+  updateStats();
+  render();
+  attachEvents();
+}
+
+function populatePhuongOptions(){
+  const set = new Set();
+  data.forEach(r=>{ if((r['PhuongXa'] || r['phuong_xa'] || '')) set.add((r['PhuongXa'] || r['phuong_xa'] || '')); });
+  const arr = Array.from(set).filter(v=>v).sort((a,b)=>a.localeCompare(b,'vi'));
+  arr.forEach(v=>{ const opt=document.createElement('option'); opt.value=v; opt.textContent=v; phuongSelect.appendChild(opt); });
+  phuongSelect.addEventListener('change', ()=>{ populateThonOptions(phuongSelect.value); searchAndRender(); });
+  populateThonOptions('');
+}
+
+function populateThonOptions(phuong){
+  thonSelect.innerHTML = '<option value="">-- Chọn Thôn/Tổ --</option>';
+  const set = new Set();
+  data.forEach(r=>{
+    if((r['ThonTo'] || r['thon_to'] || '')){
+      if(!phuong || ((r['PhuongXa'] || r['phuong_xa'] || '')===phuong)) set.add((r['ThonTo'] || r['thon_to'] || ''));
+    }
+  });
+  const arr = Array.from(set).filter(v=>v).sort((a,b)=>a.localeCompare(b,'vi'));
+  arr.forEach(v=>{ const opt=document.createElement('option'); opt.value=v; opt.textContent=v; thonSelect.appendChild(opt); });
+  thonSelect.addEventListener('change', ()=>searchAndRender());
+}
+
+function searchAndRender(){
+  const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').toLowerCase();
+  const kw = norm(searchInput.value.trim());
+  const ph = phuongSelect.value;
+  const th = thonSelect.value;
+  filtered = data.filter(r=>{
+    const name = norm(r['AccountName']);
+    const mst = norm(r['MST']);
+    const matchSearch = !kw || name.includes(kw) || mst.includes(kw) || norm(r['MaPNN']).includes(kw) || norm(r['AccountNumber']).includes(kw);
+    const matchPh = !ph || ((r['PhuongXa'] || r['phuong_xa'] || '')===ph);
+    const matchTh = !th || ((r['ThonTo'] || r['thon_to'] || '')===th);
+    return matchSearch && matchPh && matchTh;
+  });
+  page = 1;
+  updateStats();
+  render();
+}
+
+function render(){
+  tbody.innerHTML='';
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total/perPage));
+  const start = (page-1)*perPage;
+  const end = Math.min(total, start+perPage);
+  const pageData = filtered.slice(start,end);
+  pageInfo.textContent = `Hiển thị ${total ? start+1 : 0}-${end} trong ${total} (Trang ${page}/${totalPages})`;
+  pageData.forEach(r=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(r['AccountNumber']||'')}</td>
+                    <td>${escapeHtml(r['AccountName']||'')}</td>
+                    <td class="amount">${formatAmount(r['Amount']||'')}</td>
+                    <td>${escapeHtml(r['MST']||'')}</td>`;
+    tr.addEventListener('click', ()=>showQR(r));
+    tbody.appendChild(tr);
+  });
+}
+
+function showQR(row){
+  qrcodeDiv.innerHTML='';
+  const url = `https://img.vietqr.io/image/${encodeURIComponent(row['BankBin']||'')}-${encodeURIComponent(row['AccountNumber']||'')}-compact2.png?amount=${encodeURIComponent(row['Amount']||'')}&addInfo=${encodeURIComponent(row['Remark']||'')}&accountName=${encodeURIComponent(row['AccountName']||'')}`;
+  const img = document.createElement('img');
+  img.src = url;
+  img.alt = 'QR Code';
+  img.style.width='100%';
+  img.style.maxWidth='360px';
+  const info = document.createElement('div');
+  info.style.marginTop='8px';
+  info.innerHTML = `<strong>${escapeHtml(row['AccountName']||'')}</strong><br>Số TK: ${escapeHtml(row['AccountNumber']||'')} &nbsp; | &nbsp; Số tiền: ${formatAmount(row['Amount']||'')} VND<br><em>${escapeHtml(row['Remark']||'')}</em>`;
+  qrcodeDiv.appendChild(img);
+  qrcodeDiv.appendChild(info);
+  qrcodeDiv.scrollIntoView({behavior:'smooth',block:'start'});
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `qr_${(row['AccountNumber']||'')}.png`;
+  a.textContent = '⬇ Tải ảnh QR';
+  a.style.display='inline-block';
+  a.style.marginTop='8px';
+  a.style.background='teal'; a.style.color='white'; a.style.padding='6px 10px'; a.style.borderRadius='6px'; a.style.textDecoration='none';
+  qrcodeDiv.appendChild(document.createElement('br'));
+  qrcodeDiv.appendChild(a);
+}
+
+function updateStats(){ stats.textContent = `Tổng bản ghi: ${data.length}`; }
+
+prevBtn.addEventListener('click', ()=>{ if(page>1){page--; render();}});
+nextBtn.addEventListener('click', ()=>{ const tot=Math.ceil(filtered.length/perPage); if(page<tot){page++; render();}});
+
+function attachEvents(){
+  searchInput.addEventListener('input', ()=>{ searchAndRender(); });
+  clearBtn.addEventListener('click', ()=>{ searchInput.value=''; phuongSelect.value=''; populateThonOptions(''); thonSelect.value=''; searchAndRender(); });
+}
+
+function escapeHtml(s){ return (s||'').toString().replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
+function formatAmount(x){ 
+  const n = parseInt(x||0,10); 
+  return isNaN(n)?'': n.toLocaleString('vi-VN'); 
+}
+
+setTimeout(init,100);
+  }).catch(err=>{document.getElementById('stats').textContent='Không tải được dữ liệu. Vui lòng tải lại trang hoặc kiểm tra data.json.'; console.error(err);});
+</script>
+</body>
+</html>
